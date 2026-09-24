@@ -1047,12 +1047,11 @@ function createRecogInstance(){
   if(!SRC)return null;
   try{
     const r=new SRC();r.lang=getActiveVoiceLang();r.interimResults=true;r.continuous=false;
-    r.onstart=()=>{recogActive=true;voiceBroken=false;setCloud('listening');setStatus('Listening… speak now',true);showBubble('',true);};
+    r.onstart=()=>{recogActive=true;voiceBroken=false;setCloud('listening');setStatus('Listening… speak now',true);hideBubble();};
     r.onend=()=>{recogActive=false;if(!holding)finishVoiceInput();};
     r.onresult=e=>{
       fText='';iText='';
       for(let i=0;i<e.results.length;i++){const result=e.results[i];if(result.isFinal)fText+=result[0].transcript;else iText+=result[0].transcript;}
-      const combined=(fText+' '+iText).trim();if(combined)showBubble(combined,true);
     };
     r.onerror=e=>{
       recogActive=false;console.warn('Speech recognition error:',e.error);
@@ -1114,8 +1113,16 @@ cloudArea.addEventListener('contextmenu',e=>e.preventDefault());
 async function handleSubmit(text, fromVoice){
   if(busy)return; busy=true;
   closeAllRows(); closeSheets();
-  showBubble(text,false);
+  if(!fromVoice)showBubble(text,false);
   setCloud('thinking'); setStatus('Understanding…',true);
+  if(fromVoice){
+    try { await sendChatMessage(text); }
+    finally {
+      busy=false; setCloud('idle'); setStatus(DEFAULT_STATUS);
+      hideBubble(); switchTab('ai');
+    }
+    return;
+  }
   let res;
   try { res=await extract(text); }
   catch(error) {
@@ -1125,10 +1132,7 @@ async function handleSubmit(text, fromVoice){
   }
   await sleep(280);
   setCloud('idle'); busy=false; setStatus(DEFAULT_STATUS);
-  if(res.question){
-    if(fromVoice){ chatMsg('user',text); chatMsg('ai',res.question); switchTab('ai'); }
-    else openDecision(clarifyTitleHtml(res));
-  }
+  if(res.question){openDecision(clarifyTitleHtml(res));}
   else if(res.needsTitle){openDecision(clarifyTitleHtml(res));}
   else if(res.ambig){openDecision(clarifyDateHtml(res));}
   else if(res.needsDate){openDecision(clarifyDateHtml(res));}
@@ -2138,9 +2142,9 @@ function localAgent(text){
 }
 
 /* ---- router ---- */
-async function sendChatMessage(){
-  const text=chatInput.value.trim();if(!text)return;
-  chatInput.value='';chatMsg('user',text);
+async function sendChatMessage(voiceText){
+  const text=(typeof voiceText==='string'?voiceText:chatInput.value).trim();if(!text)return;
+  if(typeof voiceText!=='string')chatInput.value='';chatMsg('user',text);
   const loadId='ld'+Date.now();
   chatLog.innerHTML+='<div class="msg ai" id="'+loadId+'"><div class="loading-dots"><span></span><span></span><span></span></div></div>';
   chatLog.scrollTop=chatLog.scrollHeight;
