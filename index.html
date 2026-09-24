@@ -467,7 +467,7 @@ main { flex:1; position:relative; overflow:hidden; }
   <div style="height:30px"></div>
   <div class="sheet-title">Settings & Language</div>
   <div class="form-group"><label class="form-label" for="dsTokenInput">DeepSeek Web Token</label><input class="form-input" id="dsTokenInput" type="password" placeholder="Paste your userToken" autocomplete="off"><div class="sheet-sub">Saved on this device until you replace it or clear browser data. DeepSeek can still expire or reject the token. Each request sends your message, folders, up to 160 open or recent tasks, saved preferences, and the last 12 chat messages to DeepSeek.</div></div>
-  <div class="sheet-sub">Speech recognition uses your browser's built-in service. Availability and usage limits depend on the browser.</div>
+  <div class="sheet-sub">Speech recognition uses the browser's built-in service. In Firefox it works only when its speech model is already available; otherwise you can type in AI.</div>
   <div class="form-group"><label class="form-label">App Name</label><input class="form-input" id="appNameInput" placeholder="My Memory" maxlength="24"></div>
   <div class="form-group"><label class="form-label">Speech Recognition Language</label>
     <select class="form-input" id="voiceLangSelect">
@@ -946,10 +946,32 @@ function saveAiMemory(notes){
   localStorage.setItem(AI_MEMORY_KEY,JSON.stringify(memory.slice(-40)));
 }
 function parseAiJson(raw){
-  const text=String(raw||'').trim();
-  const first=text.indexOf('{'),last=text.lastIndexOf('}');
-  if(first>=0&&last>first){try{return JSON.parse(text.slice(first,last+1));}catch{}}
+  let text=String(raw||'').replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
+  text=text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+  text=text.replace(/^\s*"?reply"?\s*:/i,'{"reply":');
+  const parseObject=candidate=>{
+    try{const value=JSON.parse(candidate);return value&&typeof value==='object'&&!Array.isArray(value)?value:null;}catch{return null;}
+  };
+  const direct=parseObject(text);
+  if(direct)return direct;
+  for(let start=text.indexOf('{');start>=0;start=text.indexOf('{',start+1)){
+    let depth=0,inString=false,escaped=false;
+    for(let i=start;i<text.length;i++){
+      const ch=text[i];
+      if(inString){if(escaped)escaped=false;else if(ch==='\\')escaped=true;else if(ch==='"')inString=false;continue;}
+      if(ch==='"'){inString=true;continue;}
+      if(ch==='{')depth++;
+      else if(ch==='}'&&--depth===0){const found=parseObject(text.slice(start,i+1));if(found)return found;break;}
+    }
+  }
+  const replyMatch=text.match(/"?reply"?\s*:\s*("(?:\\.|[^"\\])*?")/s);
+  if(replyMatch){try{return {reply:JSON.parse(replyMatch[1]),actions:{}};}catch{}}
   return null;
+}
+function safeAiFallback(raw,userText){
+  const text=String(raw||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+  if(/^\s*(?:\{|"?reply"?\s*:)/i.test(text)||/"actions"\s*:/.test(text))return /[\u0600-\u06FF]/.test(userText)?'وصلني رد غير واضح من المساعد. جرّب مرة أخرى.':'I got an unreadable assistant response. Please try again.';
+  return text.slice(0,1400)||(/[\u0600-\u06FF]/.test(userText)?'لم يصل رد من المساعد. جرّب مرة أخرى.':'The assistant returned no response. Please try again.');
 }
 function personalSystemPrompt(mode){
   const savedOrder=(()=>{try{return JSON.parse(localStorage.getItem('sm_ai_task_order')||'[]');}catch{return [];}})();
@@ -959,9 +981,10 @@ function personalSystemPrompt(mode){
     savedPreferences:getAiMemory(),taskOrder:savedOrder
   };
   const recent=chatHistory.slice(-12).map(m=>({role:m.role==='user'?'User':'Assistant',text:m.text}));
-  const base='You are the user’s concise personal memory and organizer. This app is general purpose: home, study, work, games, shows, errands, ideas, and anything the user wants to remember. Use the user’s own folders and saved ordering preferences; create a folder only when clearly useful or explicitly requested. Match the user’s language, including Arabic. Be concise, do not show chain-of-thought or filler, and ask one short follow-up only when an essential detail is missing. Save items without a date when no deadline or reminder was requested. Current local date: '+toISO(today())+'. Local user memory and current app state: '+JSON.stringify(snapshot)+'. Recent conversation: '+JSON.stringify(recent)+'.';
-  if(mode==='voice')return base+' Extract the spoken request. Return only JSON: {"title":"string or null","category":"existing folder or new folder name","createFolder":false,"icon":"emoji or folder emoji","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"description":"string","question":"short essential follow-up or empty"}. Do not invent dates. If no deadline was requested, leave dueDate null and set noReminder true.';
-  return base+' Handle the user’s request against the supplied tasks. Return only JSON: {"reply":"short answer","actions":{"add":[{"title":"...","category":"folder name","createFolder":false,"icon":"📁","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true}],"complete":["existing task id"],"delete":["existing task id"],"move":[{"id":"existing task id","category":"folder name","createFolder":false,"icon":"📁"}],"createFolders":[{"name":"...","icon":"📁"}],"remember":["durable preference explicitly stated or corrected by user"],"order":["task ids in the requested order"]}}. Only make actions that the user clearly asked for. Use only IDs present in the supplied state.';
+  const base='You are the user’s concise personal memory and organizer. This app is general purpose: home, study, work, games, TV shows, errands, ideas, and anything the user wants to remember. Follow these rules carefully: (1) Distinguish conversation from an instruction: do not create, change, complete, delete, or move tasks unless the user clearly asks you to do so. A question or casual mention alone is not permission to add a task. (2) When the user clearly asks to save/add/remember/remind, capture the task faithfully and keep its title short; do not invent details, deadlines, or reminder times. (3) Interpret relative dates using the supplied local date. For a weekday without a date, use its next upcoming occurrence; when a date is uncertain, leave it unset and ask one brief question only if needed. (4) Prefer an existing folder whose name and contents best match the task. Use Personal only when no folder is a reasonable fit. Create a new folder only when the user asks or several items clearly need one. (5) Respect explicit task ordering and saved preferences. Reorder tasks only when asked; use only supplied task IDs. (6) Match the user’s language and dialect, including Arabic. Be concise and natural; never expose internal planning, JSON, or filler. Confirm only actions that were actually applied, and mention a reminder only when the saved task has a real reminder date/time. Current local date: '+toISO(today())+'. Local user memory and current app state: '+JSON.stringify(snapshot)+'. Recent conversation: '+JSON.stringify(recent)+'.';
+  const responseStyle=' The reply field is plain, natural text for the user: never put JSON, field names, braces, code fences, or ISO-formatted dates in it. Use the user’s language and dialect, and use a human-readable date. Keep confirmations to one short sentence and describe only actions that were actually requested.';
+  if(mode==='voice')return base+responseStyle+' Extract the spoken request. Return only JSON: {"title":"string or null","category":"existing folder or new folder name","createFolder":false,"icon":"emoji or folder emoji","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"description":"string","question":"short essential follow-up or empty"}. Do not invent dates. If no deadline was requested, leave dueDate null and set noReminder true.';
+  return base+responseStyle+' Handle the user’s request against the supplied tasks. Return only JSON: {"reply":"short answer","actions":{"add":[{"title":"...","category":"folder name","createFolder":false,"icon":"📁","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true}],"complete":["existing task id"],"delete":["existing task id"],"move":[{"id":"existing task id","category":"folder name","createFolder":false,"icon":"📁"}],"createFolders":[{"name":"...","icon":"📁"}],"remember":["durable preference explicitly stated or corrected by user"],"order":["task ids in the requested order"]}}. Only make actions that the user clearly asked for. Use only IDs present in the supplied state.';
 }
 async function callDeepSeek(messages){
   const dsToken=localStorage.getItem('sm_ds_token')||'';
@@ -1055,7 +1078,11 @@ function createRecogInstance(){
     };
     r.onerror=e=>{
       recogActive=false;console.warn('Speech recognition error:',e.error);
-      if(e.error==='not-allowed'||e.error==='service-not-allowed')toast('Allow microphone access in your browser settings.');
+      if(e.error==='service-not-allowed'||e.error==='language-not-supported'||e.error==='language-unavailable'){
+        voiceBroken=true;fText='';iText='';listeningToggle=false;switchTab('ai');chatInput.focus();
+        toast('Voice transcription is unavailable in this browser. Type your request in AI.');
+      }
+      else if(e.error==='not-allowed')toast('Allow microphone access in your browser settings.');
       else if(e.error==='network')toast('Browser speech recognition needs an internet connection.');
       else if(e.error!=='no-speech'&&e.error!=='aborted')toast('Speech recognition failed. Try again.');
     };
@@ -1069,9 +1096,17 @@ async function requestMicPermission(showToast=true){
 }
 async function startVoiceInput(){
   if(busy)return;fText='';iText='';listeningToggle=true;
-  if(!SRC){listeningToggle=false;toast('Speech recognition is unavailable here. Try Chrome or Edge.');return;}
-  try{recog=createRecogInstance();if(!recog)throw new Error('Speech recognition is unavailable');recog.start();}
-  catch(error){listeningToggle=false;console.warn('Could not start recognition:',error);toast('Could not start speech recognition. Try again.');}
+  if(!SRC){listeningToggle=false;switchTab('ai');chatInput.focus();toast('Voice transcription is unavailable in this browser. Type your request in AI.');return;}
+  try{
+    if(/Firefox\//.test(navigator.userAgent)){
+      const locallyAvailable=typeof SRC.available==='function'&&await SRC.available({langs:[getActiveVoiceLang()],processLocally:true}).catch(()=> 'unavailable')==='available';
+      if(!locallyAvailable){listeningToggle=false;switchTab('ai');chatInput.focus();toast('Firefox voice input needs an installed speech model. Type your request in AI.');return;}
+    }
+    recog=createRecogInstance();if(!recog)throw new Error('Speech recognition is unavailable');
+    if(/Firefox\//.test(navigator.userAgent)&&'processLocally' in recog)recog.processLocally=true;
+    recog.start();
+  }
+  catch(error){listeningToggle=false;console.warn('Could not start recognition:',error);toast('Could not start speech recognition. Type your request in AI.');}
 }
 function stopVoiceInput(){
   listeningToggle=false;
@@ -1783,9 +1818,9 @@ function notifState(){
 const NOTIF_COPY={
   unsupported:'Not available here. Open the app from a local server or a hosted URL to get reminders with it closed.',
   off:'Switched off. Turn it back on any time.',
-  on:'On — reminders arrive as real notifications, and the app keeps checking for you after you close it.',
+  on:'On — the browser can show notifications; reminders while the app is closed depend on browser support.',
   blocked:'Blocked in your browser settings. Allow notifications for this site, then reload.',
-  ask:'Off. Turn on to be reminded even when the app is closed.'
+  ask:'Off. Turn on notifications; background reminders depend on browser support.'
 };
 
 function paintNotifRow(){
@@ -2153,7 +2188,9 @@ async function sendChatMessage(voiceText){
     if(localStorage.getItem('sm_ds_token')){
       const messages=[{role:'system',content:personalSystemPrompt('chat')}];
       for(const item of chatHistory.slice(-12))messages.push({role:item.role==='user'?'user':'assistant',content:item.text});
-      const raw=await callDeepSeek(messages);result=parseAiJson(raw)||{reply:raw,actions:{}};
+      const raw=await callDeepSeek(messages);
+      const parsed=parseAiJson(raw);
+      result=parsed?{reply:String(parsed.reply||''),actions:parsed.actions||{}}:{reply:safeAiFallback(raw,text),actions:{}};
       applyAiActions(result.actions);
     }else result={reply:localAgent(text),actions:{}};
     const reply=String(result.reply||'تم.');
