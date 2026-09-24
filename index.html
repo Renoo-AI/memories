@@ -200,6 +200,23 @@ main { flex:1; position:relative; overflow:hidden; }
 .s-chip { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:999px; border:1.5px solid var(--line); background:#fff; font-family:var(--font); font-size:13px; font-weight:700; color:var(--ink); cursor:pointer; transition:.15s; }
 .s-chip.sel { background:var(--ink); color:#fff; border-color:var(--ink); }
 
+/* DATE & TIME WHEEL */
+.schedule-picker { background:var(--soft); border:1px solid var(--line); border-radius:20px; padding:10px 8px 12px; }
+.schedule-wheel-grid { display:grid; grid-template-columns:1.7fr .8fr .8fr; gap:6px; direction:ltr; }
+.schedule-col { min-width:0; text-align:center; }
+.schedule-col label { display:block; font-size:9px; font-weight:800; letter-spacing:1.2px; color:var(--ink-light); margin:2px 0 4px; }
+.schedule-wheel-wrap { position:relative; height:152px; overflow:hidden; }
+.schedule-wheel-wrap::after { content:''; position:absolute; inset:50% 2px auto; height:46px; transform:translateY(-50%); border-radius:13px; background:rgba(255,255,255,.9); box-shadow:inset 0 0 0 1px var(--line); pointer-events:none; }
+.schedule-wheel { height:152px; overflow-y:scroll; scroll-snap-type:y mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none; position:relative; z-index:1; }
+.schedule-wheel::-webkit-scrollbar { display:none; }
+.schedule-spacer { height:53px; pointer-events:none; }
+.schedule-row { height:46px; display:flex; align-items:center; justify-content:center; scroll-snap-align:center; cursor:pointer; color:var(--ink-light); font-size:13px; font-weight:700; transition:font-size .15s,color .15s,transform .15s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 4px; }
+.schedule-row.center { color:var(--ink); font-size:16px; transform:scale(1.02); }
+.schedule-summary { text-align:center; font-size:12px; font-weight:700; color:var(--ink-sub); margin:9px 4px 0; }
+.schedule-actions { display:flex; justify-content:center; gap:8px; margin-top:10px; }
+.schedule-toggle { border:1px solid var(--line); background:#fff; color:var(--ink-sub); border-radius:999px; padding:7px 11px; font:700 11px var(--font); cursor:pointer; }
+.schedule-toggle.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+
 /* AI CHAT */
 .chat-header { margin-top:6px; margin-bottom:12px; }
 .chat-header h1 { font-size:36px; font-weight:800; letter-spacing:-1.5px; line-height:1.1; display:flex; align-items:center; gap:10px; }
@@ -501,15 +518,20 @@ main { flex:1; position:relative; overflow:hidden; }
   <div class="sheet-title" id="editSheetTitle">Edit Item</div>
   <div class="form-group"><label class="form-label">Title</label><input class="form-input" id="editTitle" placeholder="e.g. Fix the bike"></div>
   <div class="form-group"><label class="form-label">Category</label><div class="subject-chips" id="editSubjects"></div></div>
-  <div class="form-row">
-    <div class="form-group"><label class="form-label">Due Date</label><input class="form-input" type="date" id="editDueDate"></div>
-    <div class="form-group"><label class="form-label">Details</label><input class="form-input" id="editDesc" placeholder="e.g. notes, links, steps"></div>
+  <div class="form-group"><label class="form-label">Details</label><input class="form-input" id="editDesc" placeholder="e.g. notes, links, steps"></div>
+  <div class="form-group"><label class="form-label">Pick date &amp; time</label>
+    <input type="hidden" id="editDueDate"><input type="hidden" id="editRemDate"><input type="hidden" id="editRemTime">
+    <div class="schedule-picker">
+      <div class="schedule-wheel-grid">
+        <div class="schedule-col"><label>DATE</label><div class="schedule-wheel-wrap"><div class="schedule-wheel" id="scheduleDateWheel"></div></div></div>
+        <div class="schedule-col"><label>HOUR</label><div class="schedule-wheel-wrap"><div class="schedule-wheel" id="scheduleHourWheel"></div></div></div>
+        <div class="schedule-col"><label>MIN</label><div class="schedule-wheel-wrap"><div class="schedule-wheel" id="scheduleMinuteWheel"></div></div></div>
+      </div>
+      <div class="schedule-summary" id="scheduleSummary"></div>
+      <div class="schedule-actions"><button type="button" class="schedule-toggle on" id="scheduleReminderToggle">Reminder on</button></div>
+    </div>
   </div>
-  <div class="form-row">
-    <div class="form-group"><label class="form-label">Remind On</label><input class="form-input" type="date" id="editRemDate"></div>
-    <div class="form-group"><label class="form-label">At Time</label><input class="form-input" type="time" id="editRemTime"></div>
-  </div>
-  <button class="mini-link" id="autoRemBtn">↺ Auto reminder for this deadline</button>
+  <button class="mini-link" id="autoRemBtn">↺ Use the default reminder time</button>
   <div style="display:flex; gap:10px; margin-top:6px;">
     <button class="btn btn-danger" id="editDeleteBtn" style="flex:.6;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
     <button class="btn btn-ghost" id="editCancelBtn" style="flex:1;">Cancel</button>
@@ -981,10 +1003,10 @@ function personalSystemPrompt(mode){
     savedPreferences:getAiMemory(),taskOrder:savedOrder
   };
   const recent=chatHistory.slice(-12).map(m=>({role:m.role==='user'?'User':'Assistant',text:m.text}));
-  const base='You are the user’s concise personal memory and organizer. This app is general purpose: home, study, work, games, TV shows, errands, ideas, and anything the user wants to remember. Follow these rules carefully: (1) Distinguish conversation from an instruction: do not create, change, complete, delete, or move tasks unless the user clearly asks you to do so. A question or casual mention alone is not permission to add a task. (2) When the user clearly asks to save/add/remember/remind, capture the task faithfully and keep its title short; do not invent details, deadlines, or reminder times. (3) Interpret relative dates using the supplied local date. For a weekday without a date, use its next upcoming occurrence; when a date is uncertain, leave it unset and ask one brief question only if needed. (4) Prefer an existing folder whose name and contents best match the task. Use Personal only when no folder is a reasonable fit. Create a new folder only when the user asks or several items clearly need one. (5) Respect explicit task ordering and saved preferences. Reorder tasks only when asked; use only supplied task IDs. (6) Match the user’s language and dialect, including Arabic. Be concise and natural; never expose internal planning, JSON, or filler. Confirm only actions that were actually applied, and mention a reminder only when the saved task has a real reminder date/time. Current local date: '+toISO(today())+'. Local user memory and current app state: '+JSON.stringify(snapshot)+'. Recent conversation: '+JSON.stringify(recent)+'.';
+  const base='You are the user’s persistent personal memory and organizer. This app is general purpose: home, study, work, games, TV shows, errands, ideas, and anything the user wants to remember. The saved task state survives page refreshes, so use it to find a task when the user returns to a subject after discussing other topics. Follow these rules carefully: (1) Distinguish conversation from an instruction: do not create, change, complete, delete, rename, or move tasks unless the user clearly asks you to do so. A question or casual mention alone is not permission to add a task. (2) When the user clearly asks to save/add/remember/remind, capture the task faithfully and keep its title short; do not invent details, deadlines, or reminder times. (3) If a request is incomplete or ambiguous, do not make an action. Ask one direct short question that identifies exactly what is missing, such as “Homework for Arabic — what do you need to do?” or “Which Homework 1 task do you mean?”. Continue from the answer on the next turn. (4) Interpret relative dates using the supplied local date. For a weekday without a date, use its next upcoming occurrence; when a date is uncertain, ask instead of guessing. (5) Prefer an existing folder whose name and contents best match the task. Use Personal only when no folder is a reasonable fit. Create a new folder only when the user asks or several items clearly need one. (6) Respect explicit task ordering and saved preferences. Reorder tasks only when asked; use only supplied task IDs. (7) Match the user’s language and dialect, including Arabic. Be concise and natural; never expose internal planning, JSON, or filler. Confirm only actions that were actually applied, and mention a reminder only when the saved task has a real reminder date/time. Current local date: '+toISO(today())+'. Local user memory and current app state: '+JSON.stringify(snapshot)+'. Recent conversation: '+JSON.stringify(recent)+'.';
   const responseStyle=' The reply field is plain, natural text for the user: never put JSON, field names, braces, code fences, or ISO-formatted dates in it. Use the user’s language and dialect, and use a human-readable date. Keep confirmations to one short sentence and describe only actions that were actually requested.';
   if(mode==='voice')return base+responseStyle+' Extract the spoken request. Return only JSON: {"title":"string or null","category":"existing folder or new folder name","createFolder":false,"icon":"emoji or folder emoji","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"description":"string","question":"short essential follow-up or empty"}. Do not invent dates. If no deadline was requested, leave dueDate null and set noReminder true.';
-  return base+responseStyle+' Handle the user’s request against the supplied tasks. Return only JSON: {"reply":"short answer","actions":{"add":[{"title":"...","category":"folder name","createFolder":false,"icon":"📁","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true}],"complete":["existing task id"],"delete":["existing task id"],"move":[{"id":"existing task id","category":"folder name","createFolder":false,"icon":"📁"}],"createFolders":[{"name":"...","icon":"📁"}],"remember":["durable preference explicitly stated or corrected by user"],"order":["task ids in the requested order"]}}. Only make actions that the user clearly asked for. Use only IDs present in the supplied state.';
+  return base+responseStyle+' Handle the user’s request against the supplied tasks. Return only JSON: {"reply":"short answer or one clarification question","actions":{"add":[{"title":"...","category":"folder name","createFolder":false,"icon":"📁","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"description":"optional"}],"update":[{"id":"existing task id","title":"new title or null","description":"new details or null","dueDate":"YYYY-MM-DD or null","reminderDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":false,"category":"folder name or null","createFolder":false,"icon":"📁"}],"rename":[{"id":"existing task id","title":"new task title"}],"complete":["existing task id"],"delete":["existing task id"],"move":[{"id":"existing task id","category":"folder name","createFolder":false,"icon":"📁"}],"createFolders":[{"name":"...","icon":"📁"}],"remember":["durable preference explicitly stated or corrected by user"],"order":["task ids in the requested order"]}}. For a clarification, return an empty actions object. Only make actions that the user clearly asked for. Use only IDs present in the supplied state.';
 }
 async function callDeepSeek(messages){
   const dsToken=localStorage.getItem('sm_ds_token')||'';
@@ -1022,6 +1044,27 @@ function applyAiActions(actions){
     const due=item.dueDate?fromISO(item.dueDate):today();
     createTask({title,subject:folder?.name||'Personal',due,remTime:item.reminderTime||null,noRem:item.noReminder||!item.dueDate,desc:item.description||''});
     changed=true;
+  }
+  for(const item of (Array.isArray(actions.rename)?actions.rename:[])){
+    const task=byId(item?.id),title=String(item?.title||'').trim();
+    if(task&&title){task.title=title.slice(0,140);changed=true;}
+  }
+  for(const item of (Array.isArray(actions.update)?actions.update:[])){
+    const task=byId(item?.id);if(!task)continue;
+    const title=typeof item.title==='string'?item.title.trim():'';
+    if(title)task.title=title.slice(0,140);
+    if(typeof item.description==='string')task.desc=item.description.trim().slice(0,800);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(String(item.dueDate||'')))task.dueDate=item.dueDate;
+    if(item.category){
+      const folder=findOrCreateAiFolder(item.category,item.icon,!!item.createFolder);
+      if(folder)task.subject=folder.name;
+    }
+    if(item.noReminder===true){task.reminderDate=null;task.reminderTime=null;}
+    else {
+      if(/^\d{4}-\d{2}-\d{2}$/.test(String(item.reminderDate||'')))task.reminderDate=item.reminderDate;
+      if(/^\d{2}:\d{2}$/.test(String(item.reminderTime||'')))task.reminderTime=item.reminderTime;
+    }
+    task.notified=false;changed=true;
   }
   for(const id of (Array.isArray(actions.complete)?actions.complete:[])){const task=byId(id);if(task&&!task.completed){task.completed=true;changed=true;}}
   for(const id of (Array.isArray(actions.delete)?actions.delete:[])){if(byId(id)){deleteSilent(id);changed=true;}}
@@ -1597,6 +1640,49 @@ $('editSubjects').addEventListener('click',e=>{
   $('editSubjects').querySelectorAll('.s-chip').forEach(x=>x.classList.toggle('sel',x===c));
 });
 
+let scheduleReminderOn=true;
+const scheduleDateLabel=iso=>{
+  const d=fromISO(iso), day=diffDays(today(),d);
+  if(day===0)return 'Today · '+d.getDate()+' '+MO[d.getMonth()];
+  if(day===1)return 'Tomorrow · '+d.getDate()+' '+MO[d.getMonth()];
+  return WD[d.getDay()]+' · '+d.getDate()+' '+MO[d.getMonth()];
+};
+function buildScheduleWheel(el,values,selected,format,onChange){
+  el.innerHTML='<div class="schedule-spacer"></div>'+values.map(value=>'<div class="schedule-row" data-value="'+esc(value)+'">'+esc(format(value))+'</div>').join('')+'<div class="schedule-spacer"></div>';
+  const rows=[...el.querySelectorAll('.schedule-row')];
+  const refresh=()=>{
+    const box=el.getBoundingClientRect(),mid=box.top+box.height/2;
+    let closest=null,distance=Infinity;
+    for(const row of rows){const r=row.getBoundingClientRect(),d=Math.abs(r.top+r.height/2-mid);row.classList.toggle('center',d<24);if(d<distance){closest=row;distance=d;}}
+    if(closest)onChange(closest.dataset.value);
+  };
+  const index=Math.max(0,values.indexOf(String(selected)));
+  requestAnimationFrame(()=>{const row=rows[index];if(row)el.scrollTop=row.offsetTop-(el.clientHeight-row.offsetHeight)/2;refresh();});
+  let timer;el.onscroll=()=>{refresh();clearTimeout(timer);timer=setTimeout(refresh,80);};
+  for(const row of rows)row.onclick=()=>row.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function syncScheduleSummary(){
+  const date=$('editDueDate').value,time=$('editRemTime').value||'18:00';
+  $('scheduleSummary').textContent=scheduleReminderOn?'Due '+scheduleDateLabel(date)+' · reminder '+fmtTime(time):'Due '+scheduleDateLabel(date)+' · no reminder';
+  $('scheduleReminderToggle').classList.toggle('on',scheduleReminderOn);
+  $('scheduleReminderToggle').textContent=scheduleReminderOn?'Reminder on':'No reminder';
+  $('editRemDate').value=scheduleReminderOn?date:'';
+  if(!scheduleReminderOn)$('editRemTime').value='';
+}
+function buildSchedulePicker(dueISO,remDate,remTime){
+  const dates=Array.from({length:366},(_,i)=>toISO(addDays(today(),i)));
+  const parsedTime=/^\d{2}:\d{2}$/.test(remTime||'')?remTime:'18:00';
+  const [hour,minute]=parsedTime.split(':');
+  scheduleReminderOn=!!remDate;
+  $('editDueDate').value=dates.includes(dueISO)?dueISO:toISO(today());
+  $('editRemTime').value=parsedTime;
+  buildScheduleWheel($('scheduleDateWheel'),dates,$('editDueDate').value,scheduleDateLabel,value=>{$('editDueDate').value=value;syncScheduleSummary();});
+  buildScheduleWheel($('scheduleHourWheel'),Array.from({length:24},(_,i)=>pad(i)),hour,value=>{$('editRemTime').value=value+':'+($('editRemTime').value.split(':')[1]||'00');syncScheduleSummary();});
+  buildScheduleWheel($('scheduleMinuteWheel'),['00','05','10','15','20','25','30','35','40','45','50','55'],minute,value=>{$('editRemTime').value=($('editRemTime').value.split(':')[0]||'18')+':'+value;syncScheduleSummary();});
+  syncScheduleSummary();
+}
+$('scheduleReminderToggle').addEventListener('click',()=>{scheduleReminderOn=!scheduleReminderOn;if(scheduleReminderOn&&!$('editRemTime').value)$('editRemTime').value='18:00';syncScheduleSummary();});
+
 /* id = existing task to edit, or null to compose a brand-new one. */
 function openEditSheet(id){
   closeAllRows(); sheetCtx=null; decisionSheet.classList.remove('open');
@@ -1606,9 +1692,7 @@ function openEditSheet(id){
   $('editTitle').value=t?t.title:'';
   const due=t?t.dueDate:toISO(today());
   const auto=computeReminder(fromISO(due),null,null);
-  $('editDueDate').value=due;
-  $('editRemDate').value=t?(t.reminderDate||''):auto.reminderDate;
-  $('editRemTime').value=t?(t.reminderTime||'18:00'):auto.reminderTime;
+  buildSchedulePicker(due,t?t.reminderDate:auto.reminderDate,t?(t.reminderTime||'18:00'):auto.reminderTime);
   $('editDesc').value=t?(t.desc||''):'';
 
   const defaultSubj = t ? t.subject : (activeFolderId ? (projects.find(p=>p.id===activeFolderId)?.name || 'Work') : 'Work');
@@ -1620,7 +1704,8 @@ $('editCancelBtn').addEventListener('click',closeSheets);
 $('autoRemBtn').addEventListener('click',()=>{
   const due=$('editDueDate').value?fromISO($('editDueDate').value):today();
   const r=computeReminder(due,null,null);
-  $('editRemDate').value=r.reminderDate; $('editRemTime').value=r.reminderTime;
+  scheduleReminderOn=true;
+  buildSchedulePicker(toISO(due),toISO(due),r.reminderTime);
 });
 $('editSaveBtn').addEventListener('click',()=>{
   const title=$('editTitle').value.trim();
