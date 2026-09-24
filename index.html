@@ -217,27 +217,36 @@ main { flex:1; position:relative; overflow:hidden; }
 .schedule-toggle { border:1px solid var(--line); background:#fff; color:var(--ink-sub); border-radius:999px; padding:7px 11px; font:700 11px var(--font); cursor:pointer; }
 .schedule-toggle.on { background:var(--ink); color:#fff; border-color:var(--ink); }
 
-/* AI CHAT */
-.chat-header { margin-top:6px; margin-bottom:12px; }
-.chat-header h1 { font-size:36px; font-weight:800; letter-spacing:-1.5px; line-height:1.1; display:flex; align-items:center; gap:10px; }
+/* AI CHAT — calm, full-height conversation layout */
+.chat-header { margin-top:2px; margin-bottom:8px; padding:8px 2px 14px; border-bottom:1px solid rgba(0,0,0,.06); display:flex; align-items:center; gap:11px; }
+.chat-avatar { width:42px; height:42px; border-radius:15px; background:linear-gradient(145deg,#ff8d6e,#ff6041); color:#fff; display:flex; align-items:center; justify-content:center; font-size:21px; box-shadow:0 8px 18px rgba(255,107,74,.25); flex-shrink:0; }
+.chat-heading { min-width:0; flex:1; }
+.chat-header h1 { font-size:22px; font-weight:800; letter-spacing:-.6px; line-height:1.1; display:flex; align-items:center; gap:7px; }
 .chat-header h1 .dot { color:var(--orange); }
 .ai-pill { font-size:10px; font-weight:800; letter-spacing:1px; text-transform:uppercase; padding:5px 10px; border-radius:999px; background:var(--soft); color:var(--ink-light); display:inline-flex; align-items:center; gap:6px; }
 .ai-pill::before { content:''; width:7px; height:7px; border-radius:50%; background:#C9C2B6; }
 .ai-pill.on { background:rgba(52,168,83,.1); color:var(--green); }
 .ai-pill.on::before { background:var(--green); animation:blink 2.4s infinite; }
-.chat-header p { font-size:14px; color:var(--ink-sub); font-weight:600; margin-top:6px; }
+.chat-header p { font-size:11.5px; color:var(--ink-light); font-weight:600; margin-top:4px; }
 .sugg-row { display:flex; gap:8px; flex-wrap:wrap; padding:2px 0 12px; }
 .sugg { border:1px solid var(--line); background:#fff; border-radius:999px; padding:9px 13px; font-size:12px; font-weight:700; cursor:pointer; font-family:var(--font); transition:.15s; }
 .sugg:active { transform:scale(.94); background:var(--orange-soft); border-color:var(--orange); }
-.chat-log { flex:1; display:flex; flex-direction:column; gap:10px; padding:4px 0 12px; overflow-y:auto; scrollbar-width:none; }
+.chat-log { flex:1; display:flex; flex-direction:column; gap:16px; padding:16px 2px 18px; overflow-y:auto; scrollbar-width:none; overscroll-behavior:contain; }
 .chat-log::-webkit-scrollbar { display:none; }
-.msg { max-width:86%; padding:12px 15px; border-radius:20px; font-size:14.5px; font-weight:500; line-height:1.45; word-wrap:break-word; white-space:pre-wrap; animation:msgIn .3s ease; }
+.msg { max-width:min(88%,560px); padding:12px 15px; border-radius:19px; font-size:14.5px; font-weight:500; line-height:1.55; word-wrap:break-word; white-space:pre-wrap; animation:msgIn .3s ease; box-shadow:0 2px 8px rgba(0,0,0,.025); }
 @keyframes msgIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
-.msg.user { align-self:flex-end; background:var(--ink); color:#fff; border-bottom-right-radius:5px; }
-.msg.ai { align-self:flex-start; background:var(--white); border:1px solid var(--line); border-bottom-left-radius:5px; box-shadow:0 4px 12px rgba(0,0,0,.03); }
+.msg.user { align-self:flex-end; background:var(--ink); color:#fff; border-bottom-right-radius:5px; box-shadow:0 6px 14px rgba(15,15,18,.12); }
+.msg.ai { align-self:flex-start; background:var(--white); border:1px solid var(--line); border-bottom-left-radius:5px; box-shadow:0 4px 14px rgba(0,0,0,.045); }
+.msg.system { align-self:center; max-width:94%; padding:6px 12px; font-size:11px; color:var(--ink-light); background:transparent; box-shadow:none; }
+.chat-empty { margin:auto; text-align:center; color:var(--ink-light); padding:24px; }
+.chat-empty .empty-mark { width:54px; height:54px; margin:0 auto 12px; border-radius:19px; background:var(--soft); display:flex; align-items:center; justify-content:center; color:var(--orange); font-size:26px; }
+.chat-empty strong { display:block; color:var(--ink); font-size:16px; margin-bottom:5px; }
+.chat-empty span { font-size:12px; font-weight:600; }
 .msg.ai.act { border-color:rgba(255,107,74,.35); background:#FFF8F5; }
-.chat-input-area { display:flex; align-items:center; gap:10px; background:var(--white); border:1px solid var(--line); border-radius:26px; padding:5px 5px 5px 18px; box-shadow:0 10px 30px rgba(0,0,0,.04); flex-shrink:0; }
-.chat-input-area input { flex:1; border:none; outline:none; background:transparent; font-size:15px; font-weight:600; padding:12px 0; font-family:var(--font); min-width:0; }
+.chat-input-area { display:flex; align-items:center; gap:10px; background:var(--white); border:1px solid #ded8cf; border-radius:20px; padding:5px 5px 5px 18px; box-shadow:0 10px 30px rgba(0,0,0,.07); flex-shrink:0; transition:border-color .2s,box-shadow .2s; margin-bottom:2px; }
+.chat-input-area:focus-within { border-color:var(--orange); box-shadow:0 8px 26px rgba(255,107,74,.13); }
+.chat-input-area input { flex:1; border:none; outline:none; background:transparent; font-size:15px; font-weight:600; padding:12px 0; font-family:var(--font); min-width:0; color:var(--ink); }
+.chat-input-area input::placeholder { color:#aaa39a; font-weight:500; }
 .chat-input-area .send-btn { width:44px; height:44px; }
 .loading-dots { display:flex; gap:4px; padding:4px 2px; }
 .loading-dots span { width:6px; height:6px; background:var(--ink-light); border-radius:50%; animation:dotPulse 1.2s infinite; }
@@ -432,11 +441,13 @@ main { flex:1; position:relative; overflow:hidden; }
     <!-- ═══ AI ═══ -->
     <section class="view" id="view-ai">
       <div class="chat-header">
-        <h1>Assistant<span class="dot">.</span></h1>
+        <div class="chat-avatar">✦</div>
+        <div class="chat-heading"><h1>Assistant<span class="dot">.</span></h1><p>Your personal memory and task agent</p></div>
+        <span class="ai-pill" id="chatStatus">Offline</span>
       </div>
       <div class="chat-log" id="chatLog"></div>
       <div class="chat-input-area">
-        <input type="text" id="chatInput" placeholder="e.g. Add a math test for Friday…" autocomplete="off">
+        <input type="text" id="chatInput" placeholder="Message your assistant…" autocomplete="off">
         <button class="send-btn" id="chatSendBtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg></button>
       </div>
     </section>
@@ -1976,6 +1987,7 @@ function chatMsg(role,text){
   return text;
 }
 function renderChat(){
+  if(!chatHistory.length){chatLog.innerHTML='<div class="chat-empty"><div class="empty-mark">✦</div><strong>Ready when you are</strong><span>Your conversations and task context stay here.</span></div>';return;}
   chatLog.innerHTML=chatHistory.map(m=>{
     if(m.role==='user')return '<div class="msg user">'+esc(m.text)+'</div>';
     if(m.role==='system')return '<div class="msg system">'+esc(m.text)+'</div>';
@@ -1983,7 +1995,11 @@ function renderChat(){
   }).join('');
   chatLog.scrollTop=chatLog.scrollHeight;
 }
-function updateChatMode(){ const dot=$('keyDot'); if(dot)dot.classList.toggle('on',!!localStorage.getItem('sm_ds_token')); }
+function updateChatMode(){
+  const connected=!!localStorage.getItem('sm_ds_token');
+  const dot=$('keyDot');if(dot)dot.classList.toggle('on',connected);
+  const status=$('chatStatus');if(status){status.textContent=connected?'Online':'Offline';status.classList.toggle('on',connected);}
+}
 
 /* ---- smart multilingual conversational agent with proactive questioning ---- */
 function fuzzyFind(w){
