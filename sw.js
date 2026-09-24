@@ -108,8 +108,10 @@ async function check(allowWhileVisible) {
     if (t.notified || !t.dueAt || t.dueAt > now) continue;
 
     try {
+      const late = !!t.late;
+      const level = t.priority === 'urgent' ? 'Urgent' : t.priority === 'high' ? 'Important' : late ? 'Late' : 'Reminder';
       await self.registration.showNotification(t.title || 'Memory reminder', {
-        body: 'Due ' + (t.dueLabel || 'soon') + (t.subject && t.subject !== 'General' ? ' · ' + t.subject : ''),
+        body: level + ' · Due ' + (t.dueLabel || 'soon') + (t.subject && t.subject !== 'General' ? ' · ' + t.subject : ''),
         tag: 'sm-' + t.id,
         icon: ICON,
         badge: ICON,

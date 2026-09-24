@@ -142,6 +142,9 @@ main { flex:1; position:relative; overflow:hidden; }
 .hw-desc { font-size:11.5px; color:var(--ink-light); font-weight:600; margin-top:1px; }
 .hw-meta { display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; color:var(--ink-light); margin-top:7px; }
 .hw-meta.soon { color:var(--orange); }
+.priority-chip { display:inline-flex; align-items:center; gap:3px; margin-left:5px; padding:2px 6px; border-radius:999px; font-size:9px; font-weight:800; letter-spacing:.3px; background:var(--soft); color:var(--ink-light); }
+.priority-chip.high { background:#FFF2D7; color:#B56A00; }
+.priority-chip.urgent { background:#FDE5E3; color:var(--danger); }
 
 .check-btn { width:30px; height:30px; border-radius:50%; border:2px solid #D9D2C7; background:transparent; color:transparent; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:all .3s cubic-bezier(.175,.885,.32,1.275); }
 .check-btn:active { transform:scale(.85); }
@@ -492,6 +495,7 @@ main { flex:1; position:relative; overflow:hidden; }
   <div class="sheet-title">Reminders</div>
   <div class="sheet-sub" id="notifSub2">Checking…</div>
   <button class="btn btn-ghost" id="notifToggle">Turn on</button>
+  <div class="form-group" style="margin-top:18px;"><label class="form-label" for="alarmSoundSelect">Alarm sound</label><select class="form-input" id="alarmSoundSelect"><option value="soft">Soft chime</option><option value="classic">Classic double tone</option><option value="urgent">Urgent alert</option><option value="silent">Silent notification</option></select><div class="sheet-sub">Used for reminders while this page is open. System notifications still follow your browser settings.</div><button class="btn btn-ghost" id="testAlarmBtn" style="width:100%; margin-top:8px;">▶ Test sound</button></div>
   <div style="height:30px"></div>
   <div class="sheet-title">Settings & Language</div>
   <div class="form-group"><label class="form-label" for="dsTokenInput">DeepSeek Web Token</label><input class="form-input" id="dsTokenInput" type="password" placeholder="Paste your userToken" autocomplete="off"><div class="sheet-sub">Saved on this device until you replace it or clear browser data. DeepSeek can still expire or reject the token. Each request sends your message, folders, up to 160 open or recent tasks, saved preferences, and the last 12 chat messages to DeepSeek.</div></div>
@@ -530,6 +534,7 @@ main { flex:1; position:relative; overflow:hidden; }
   <div class="form-group"><label class="form-label">Title</label><input class="form-input" id="editTitle" placeholder="e.g. Fix the bike"></div>
   <div class="form-group"><label class="form-label">Category</label><div class="subject-chips" id="editSubjects"></div></div>
   <div class="form-group"><label class="form-label">Details</label><input class="form-input" id="editDesc" placeholder="e.g. notes, links, steps"></div>
+  <div class="form-group"><label class="form-label">Importance</label><select class="form-input" id="editPriority"><option value="normal">Normal</option><option value="high">Important</option><option value="urgent">Urgent</option></select></div>
   <div class="form-group"><label class="form-label">Pick date &amp; time</label>
     <input type="hidden" id="editDueDate"><input type="hidden" id="editRemDate"><input type="hidden" id="editRemTime">
     <div class="schedule-picker">
@@ -689,6 +694,12 @@ function parseJSONsafe(txt){
 let AC = null;
 function ac(){ if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } if(AC&&AC.state==='suspended')AC.resume(); return AC; }
 function tone(f,dur,delay=0,type='sine',vol=.045){ const c=ac(); if(!c)return; const o=c.createOscillator(),g=c.createGain(); o.type=type; o.frequency.value=f; o.connect(g); g.connect(c.destination); const t0=c.currentTime+delay; g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol,t0+.015); g.gain.exponentialRampToValueAtTime(.0001,t0+dur); o.start(t0); o.stop(t0+dur+.05); }
+function playReminderTone(kind){
+  if((kind||localStorage.getItem('sm_alarm_sound')||'soft')==='silent')return;
+  if(kind==='urgent'){tone(980,.16,0,'square',.055);tone(740,.16,.18,'square',.055);tone(980,.16,.36,'square',.055);return;}
+  if(kind==='classic'){tone(880,.12);tone(660,.14,.14);return;}
+  tone(620,.13);tone(830,.18,.12);
+}
 const sSave=()=>{tone(620,.12);tone(830,.16,.09)};
 const sDone=()=>{tone(520,.1);tone(784,.15,.08)};
 const sDel =()=>tone(220,.14,0,'triangle',.04);
@@ -1010,14 +1021,14 @@ function personalSystemPrompt(mode){
   const savedOrder=(()=>{try{return JSON.parse(localStorage.getItem('sm_ai_task_order')||'[]');}catch{return [];}})();
   const snapshot={
     folders:projects.map(p=>({name:p.name,icon:p.icon})),
-    tasks:tasks.filter(t=>!t.completed).concat(tasks.filter(t=>t.completed).slice(-20)).slice(-160).map(t=>({id:t.id,title:t.title,category:t.subject,dueDate:t.dueDate,reminderDate:t.reminderDate,reminderTime:t.reminderTime,completed:t.completed})),
+    tasks:tasks.filter(t=>!t.completed).concat(tasks.filter(t=>t.completed).slice(-20)).slice(-160).map(t=>({id:t.id,title:t.title,category:t.subject,dueDate:t.dueDate,reminderDate:t.reminderDate,reminderTime:t.reminderTime,priority:t.priority||'normal',completed:t.completed})),
     savedPreferences:getAiMemory(),taskOrder:savedOrder
   };
   const recent=chatHistory.slice(-12).map(m=>({role:m.role==='user'?'User':'Assistant',text:m.text}));
-  const base='You are the user’s persistent personal memory and organizer. This app is general purpose: home, study, work, games, TV shows, errands, ideas, and anything the user wants to remember. The saved task state survives page refreshes, so use it to find a task when the user returns to a subject after discussing other topics. Follow these rules carefully: (1) Distinguish conversation from an instruction: do not create, change, complete, delete, rename, or move tasks unless the user clearly asks you to do so. A question or casual mention alone is not permission to add a task. (2) When the user clearly asks to save/add/remember/remind, capture the task faithfully and keep its title short; do not invent details, deadlines, or reminder times. (3) If a request is incomplete or ambiguous, do not make an action. Ask one direct short question that identifies exactly what is missing, such as “Homework for Arabic — what do you need to do?” or “Which Homework 1 task do you mean?”. Continue from the answer on the next turn. (4) Interpret relative dates using the supplied local date. For a weekday without a date, use its next upcoming occurrence; when a date is uncertain, ask instead of guessing. (5) Prefer an existing folder whose name and contents best match the task. Use Personal only when no folder is a reasonable fit. Create a new folder only when the user asks or several items clearly need one. (6) Respect explicit task ordering and saved preferences. Reorder tasks only when asked; use only supplied task IDs. (7) Match the user’s language and dialect, including Arabic. Be concise and natural; never expose internal planning, JSON, or filler. Confirm only actions that were actually applied, and mention a reminder only when the saved task has a real reminder date/time. Current local date: '+toISO(today())+'. Local user memory and current app state: '+JSON.stringify(snapshot)+'. Recent conversation: '+JSON.stringify(recent)+'.';
+  const base='You are the user’s persistent personal memory and organizer. This app is general purpose: home, study, work, games, TV shows, errands, ideas, and anything the user wants to remember. The saved task state survives page refreshes, so use it to find a task when the user returns to a subject after discussing other topics. Follow these rules carefully: (1) Distinguish conversation from an instruction: do not create, change, complete, delete, rename, or move tasks unless the user clearly asks you to do so. A question or casual mention alone is not permission to add a task. (2) When the user clearly asks to save/add/remember/remind, capture the task faithfully and keep its title short; do not invent details, deadlines, reminder times, or importance. (3) If a request is incomplete or ambiguous, do not make an action. Ask up to three short numbered questions when several essential details are missing, for example: “1. What exactly is the Arabic homework? 2. When is it due? 3. Should I remind you?”. Continue from the answers on the next turn. (4) Interpret relative dates using the supplied local date. For a weekday without a date, use its next upcoming occurrence; when a date is uncertain, ask instead of guessing. (5) Set priority to high or urgent only when the user says it is important, urgent, critical, or time-sensitive. Otherwise use normal. (6) Prefer an existing folder whose name and contents best match the task. Use Personal only when no folder is a reasonable fit. Create a new folder only when the user asks or several items clearly need one. (7) Respect explicit task ordering and saved preferences. Reorder tasks only when asked; use only supplied task IDs. (8) Match the user’s language and dialect, including Arabic. Be concise and natural; never expose internal planning, JSON, or filler. Confirm only actions that were actually applied, and mention a reminder only when the saved task has a real reminder date/time. Current local date: '+toISO(today())+'. Local user memory and current app state: '+JSON.stringify(snapshot)+'. Recent conversation: '+JSON.stringify(recent)+'.';
   const responseStyle=' The reply field is plain, natural text for the user: never put JSON, field names, braces, code fences, or ISO-formatted dates in it. Use the user’s language and dialect, and use a human-readable date. Keep confirmations to one short sentence and describe only actions that were actually requested.';
   if(mode==='voice')return base+responseStyle+' Extract the spoken request. Return only JSON: {"title":"string or null","category":"existing folder or new folder name","createFolder":false,"icon":"emoji or folder emoji","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"description":"string","question":"short essential follow-up or empty"}. Do not invent dates. If no deadline was requested, leave dueDate null and set noReminder true.';
-  return base+responseStyle+' Handle the user’s request against the supplied tasks. Return only JSON: {"reply":"short answer or one clarification question","actions":{"add":[{"title":"...","category":"folder name","createFolder":false,"icon":"📁","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"description":"optional"}],"update":[{"id":"existing task id","title":"new title or null","description":"new details or null","dueDate":"YYYY-MM-DD or null","reminderDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":false,"category":"folder name or null","createFolder":false,"icon":"📁"}],"rename":[{"id":"existing task id","title":"new task title"}],"complete":["existing task id"],"delete":["existing task id"],"move":[{"id":"existing task id","category":"folder name","createFolder":false,"icon":"📁"}],"createFolders":[{"name":"...","icon":"📁"}],"remember":["durable preference explicitly stated or corrected by user"],"order":["task ids in the requested order"]}}. For a clarification, return an empty actions object. Only make actions that the user clearly asked for. Use only IDs present in the supplied state.';
+  return base+responseStyle+' Handle the user’s request against the supplied tasks. Return only JSON: {"reply":"short answer or clarification questions","actions":{"add":[{"title":"...","category":"folder name","createFolder":false,"icon":"📁","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"priority":"normal|high|urgent","description":"optional"}],"update":[{"id":"existing task id","title":"new title or null","description":"new details or null","dueDate":"YYYY-MM-DD or null","reminderDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":false,"priority":"normal|high|urgent or null","category":"folder name or null","createFolder":false,"icon":"📁"}],"rename":[{"id":"existing task id","title":"new task title"}],"complete":["existing task id"],"delete":["existing task id"],"move":[{"id":"existing task id","category":"folder name","createFolder":false,"icon":"📁"}],"createFolders":[{"name":"...","icon":"📁"}],"remember":["durable preference explicitly stated or corrected by user"],"order":["task ids in the requested order"]}}. For clarification questions, return an empty actions object. Only make actions that the user clearly asked for. Use only IDs present in the supplied state.';
 }
 async function callDeepSeek(messages){
   const dsToken=localStorage.getItem('sm_ds_token')||'';
@@ -1053,7 +1064,7 @@ function applyAiActions(actions){
     const title=String(item.title||'').trim();if(!title)continue;
     const folder=findOrCreateAiFolder(item.category,item.icon,!!item.createFolder);
     const due=item.dueDate?fromISO(item.dueDate):today();
-    createTask({title,subject:folder?.name||'Personal',due,remTime:item.reminderTime||null,noRem:item.noReminder||!item.dueDate,desc:item.description||''});
+    createTask({title,subject:folder?.name||'Personal',due,remTime:item.reminderTime||null,noRem:item.noReminder||!item.dueDate,priority:['high','urgent'].includes(item.priority)?item.priority:'normal',desc:item.description||''});
     changed=true;
   }
   for(const item of (Array.isArray(actions.rename)?actions.rename:[])){
@@ -1065,6 +1076,7 @@ function applyAiActions(actions){
     const title=typeof item.title==='string'?item.title.trim():'';
     if(title)task.title=title.slice(0,140);
     if(typeof item.description==='string')task.desc=item.description.trim().slice(0,800);
+    if(['normal','high','urgent'].includes(item.priority))task.priority=item.priority;
     if(/^\d{4}-\d{2}-\d{2}$/.test(String(item.dueDate||'')))task.dueDate=item.dueDate;
     if(item.category){
       const folder=findOrCreateAiFolder(item.category,item.icon,!!item.createFolder);
@@ -1347,7 +1359,7 @@ function createTask(res, dueOverride, remDateOverride){
   if(res.noRem){ reminderDate=null; }
   const t={ id:'t'+Date.now()+Math.floor(Math.random()*999),
     title:res.title||'New task', subject:res.subject||'General', desc:res.desc||'',
-    dueDate:toISO(due), reminderDate, reminderTime, completed:false, createdAt:Date.now(), notified:false };
+    dueDate:toISO(due), reminderDate, reminderTime, priority:['high','urgent'].includes(res.priority)?res.priority:'normal', completed:false, createdAt:Date.now(), notified:false };
   tasks.push(t); saveTasks(); renderHomework(); updateRecent(); scheduleIfSoon(t);
   updateNavBadge();
   return t;
@@ -1390,11 +1402,12 @@ function activeRow(t){
   const soon=t.reminderDate&&diffDays(today(),fromISO(t.reminderDate))<=0;
   const dt=fromISO(t.dueDate);
   const p = projects.find(x => x.name.toLowerCase() === (t.subject||'').toLowerCase()) || { name: t.subject||'Work', icon: '💼' };
+  const priority=t.priority&&t.priority!=='normal'?'<span class="priority-chip '+t.priority+'">'+(t.priority==='urgent'?'Urgent':'Important')+'</span>':'';
   return '<div class="hw-row-wrap'+(groupOf(t)==='overdue'?' overdue':'')+'" data-id="'+t.id+'">'
     +'<div class="row-bg bg-done" data-act="complete">'+icoCheck+'</div>'
     +'<div class="row-bg bg-del" data-act="del">'+icoTrash+'</div>'
     +'<div class="hw-item"><div class="date-block"><div class="date-day">'+dt.getDate()+'</div><div class="date-wd">'+WD[dt.getDay()].toUpperCase()+'</div></div>'
-    +'<div class="hw-main"><div class="hw-title">'+esc(t.title)+'</div><div class="hw-sub">'+esc(p.icon+' '+t.subject)+'</div>'
+    +'<div class="hw-main"><div class="hw-title">'+esc(t.title)+priority+'</div><div class="hw-sub">'+esc(p.icon+' '+t.subject)+'</div>'
     +(t.desc?'<div class="hw-desc">'+esc(t.desc)+'</div>':'')
     +'<div class="hw-meta'+(soon?' soon':'')+'">'+icoBell+esc(remText(t))+'</div></div>'
     +'<button class="check-btn" data-act="check">'+icoCheck+'</button></div></div>';
@@ -1705,6 +1718,7 @@ function openEditSheet(id){
   const auto=computeReminder(fromISO(due),null,null);
   buildSchedulePicker(due,t?t.reminderDate:auto.reminderDate,t?(t.reminderTime||'18:00'):auto.reminderTime);
   $('editDesc').value=t?(t.desc||''):'';
+  $('editPriority').value=t?(t.priority||'normal'):'normal';
 
   const defaultSubj = t ? t.subject : (activeFolderId ? (projects.find(p=>p.id===activeFolderId)?.name || 'Work') : 'Work');
   renderEditSubjects(defaultSubj);
@@ -1729,6 +1743,7 @@ $('editSaveBtn').addEventListener('click',()=>{
   t.title=title; t.subject=editSubjSel;
   if($('editDueDate').value)t.dueDate=$('editDueDate').value;
   t.reminderDate=$('editRemDate').value||null; t.reminderTime=$('editRemTime').value||null;
+  t.priority=$('editPriority').value||'normal';
   t.desc=$('editDesc').value.trim(); t.notified=false;
   saveTasks(); renderHomework(); updateRecent(); closeSheets(); sSave();
   toast(isNew?'Added to ' + t.subject + ' ✓':'Saved ✓');
@@ -1804,11 +1819,13 @@ $('settingsBtn').addEventListener('click',()=>{
   $('appNameInput').value = localStorage.getItem('sm_appname') || 'My Memory';
   $('voiceLangSelect').value = localStorage.getItem('sm_voice_lang') || 'auto';
   $('dsTokenInput').value = localStorage.getItem('sm_ds_token') || '';
+  $('alarmSoundSelect').value = localStorage.getItem('sm_alarm_sound') || 'soft';
   settingsSheet.classList.add('open');
   backdrop.classList.add('show');
 });
 
 $('requestMicBtn').addEventListener('click', () => requestMicPermission(true));
+$('testAlarmBtn').addEventListener('click',()=>playReminderTone($('alarmSoundSelect').value));
 
 $('saveSettingsBtn').addEventListener('click',()=>{
   const lang = $('voiceLangSelect').value || 'auto';
@@ -1816,6 +1833,7 @@ $('saveSettingsBtn').addEventListener('click',()=>{
   localStorage.setItem('sm_voice_lang', lang);
   if(recog)recog.lang=getActiveVoiceLang();
   localStorage.setItem('sm_ds_token', $('dsTokenInput').value.trim());
+  localStorage.setItem('sm_alarm_sound', $('alarmSoundSelect').value || 'soft');
   updateChatMode();
 
   const newName = ($('appNameInput').value||'').trim() || 'My Memory';
@@ -1852,7 +1870,7 @@ function syncTasksToSW(){
   navigator.serviceWorker.ready.then(reg=>{
     if(!reg.active)return;
     reg.active.postMessage({type:'SYNC', tasks:tasks.filter(t=>!t.completed&&t.reminderDate).map(t=>({
-      id:t.id, title:t.title, subject:t.subject,
+      id:t.id, title:t.title, subject:t.subject, priority:t.priority||'normal', late:!!(t.dueDate&&fromISO(t.dueDate)<today()),
       dueLabel:fmtDueShort(t.dueDate),
       dueAt:localStamp(t.reminderDate,t.reminderTime),
       notified:!!t.notified
@@ -1869,9 +1887,12 @@ function localStamp(dateISO,time){
 
 function fireBanner(t){
   t.notified=true; saveTasks();
+  const late=t.dueDate&&fromISO(t.dueDate)<today();
+  const importance=t.priority==='urgent'?'Urgent':t.priority==='high'?'Important':'';
+  const label=late?'Late task':importance||'Reminder';
   if(canNotify()){
     navigator.serviceWorker.ready.then(reg=>reg.showNotification(t.title||'Homework reminder',{
-      body:'Due '+fmtDueShort(t.dueDate)+(t.subject&&t.subject!=='General'?' · '+t.subject:''),
+      body:label+' · Due '+fmtDueShort(t.dueDate)+(t.subject&&t.subject!=='General'?' · '+t.subject:''),
       tag:'sm-'+t.id, icon:NOTIF_ICON, badge:NOTIF_ICON, vibrate:[90,50,90], data:{id:t.id}
     })).catch(()=>{});
   }
@@ -1879,8 +1900,8 @@ function fireBanner(t){
 }
 function pump(){
   if(nShowing||!nq.length)return; nShowing=true; const t=nq.shift();
-  $('notifTitle').textContent=t.title; $('notifSub').textContent='Due '+fmtDueShort(t.dueDate)+'.';
-  const n=$('notif'); n.classList.add('show'); tone(880,.1); tone(660,.12,.12);
+  $('notifTitle').textContent=t.title; $('notifSub').textContent=(t.dueDate&&fromISO(t.dueDate)<today()?'Late · ':'')+(t.priority==='urgent'?'Urgent · ':t.priority==='high'?'Important · ':'')+'Due '+fmtDueShort(t.dueDate)+'.';
+  const n=$('notif'); n.classList.add('show'); playReminderTone(t.priority==='urgent'?'urgent':localStorage.getItem('sm_alarm_sound'));
   const hide=()=>{ n.classList.remove('show'); setTimeout(()=>{ nShowing=false; pump(); },500); };
   n.onclick=()=>{ hide(); switchTab('homework'); flashId=t.id; };
   setTimeout(hide,6000);
