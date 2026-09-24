@@ -326,6 +326,18 @@ main { flex:1; position:relative; overflow:hidden; }
 .pick-wrap input { flex:1; height:52px; border-radius:16px; border:1.5px solid var(--line); background:#fff; padding:0 14px; font-size:14px; font-weight:700; font-family:var(--font); outline:none; }
 .cl-input { width:100%; height:54px; border-radius:16px; border:1.5px solid var(--line); background:#fff; padding:0 16px; font-size:15px; font-weight:700; outline:none; margin-bottom:14px; font-family:var(--font); }
 .cl-input:focus { border-color:var(--orange); }
+.agent-q-sheet { position:fixed; left:50%; bottom:0; width:min(100%,460px); max-height:84vh; overflow-y:auto; transform:translate(-50%,110%); background:var(--bg); border-radius:28px 28px 0 0; padding:18px 22px 28px; z-index:350; box-shadow:0 -18px 50px rgba(0,0,0,.18); transition:transform .42s cubic-bezier(.16,1,.3,1); }
+.agent-q-sheet.open { transform:translate(-50%,0); }
+.agent-q-kicker { color:var(--orange); font-size:10px; font-weight:800; letter-spacing:1.6px; text-transform:uppercase; margin-bottom:7px; }
+.agent-q-title { font-size:22px; font-weight:800; letter-spacing:-.5px; margin-bottom:4px; }
+.agent-q-sub { color:var(--ink-sub); font-size:12.5px; font-weight:600; margin-bottom:15px; }
+.agent-q-block { border-top:1px solid var(--line); padding:14px 0 2px; }
+.agent-q-label { font-size:14px; font-weight:800; margin-bottom:9px; }
+.agent-q-options { display:flex; flex-wrap:wrap; gap:8px; }
+.agent-q-option { border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:13px; padding:10px 12px; font:700 12px var(--font); cursor:pointer; transition:.15s; }
+.agent-q-option.sel { color:#fff; background:var(--ink); border-color:var(--ink); }
+.agent-q-actions { display:flex; gap:9px; margin-top:18px; }
+.agent-q-actions button { flex:1; }
 
 .subject-chips { display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; }
 .subject-chips::-webkit-scrollbar { display:none; }
@@ -489,6 +501,7 @@ main { flex:1; position:relative; overflow:hidden; }
 
 <div class="backdrop" id="backdrop"></div>
 <div class="sheet" id="decisionSheet"><div class="grab"></div><div id="decisionBody"></div></div>
+<div class="agent-q-sheet" id="agentQuestionSheet"><div class="grab"></div><div class="agent-q-kicker">Quick choices</div><div class="agent-q-title">A few details?</div><div class="agent-q-sub">Choose what you know, or skip and I’ll leave it open.</div><div id="agentQuestionBody"></div><div class="agent-q-actions"><button class="btn btn-ghost" id="agentQuestionSkip">Skip</button><button class="btn btn-primary" id="agentQuestionSend">Continue</button></div></div>
 
 <div class="sheet" id="settingsSheet">
   <div class="grab"></div>
@@ -1028,7 +1041,7 @@ function personalSystemPrompt(mode){
   const base='You are the user’s persistent personal memory and organizer. This app is general purpose: home, study, work, games, TV shows, errands, ideas, and anything the user wants to remember. The saved task state survives page refreshes, so use it to find a task when the user returns to a subject after discussing other topics. Follow these rules carefully: (1) Distinguish conversation from an instruction: do not create, change, complete, delete, rename, or move tasks unless the user clearly asks you to do so. A question or casual mention alone is not permission to add a task. (2) When the user clearly asks to save/add/remember/remind, capture the task faithfully and keep its title short; do not invent details, deadlines, reminder times, or importance. (3) If a request is incomplete or ambiguous, do not make an action. Ask up to three short numbered questions when several essential details are missing, for example: “1. What exactly is the Arabic homework? 2. When is it due? 3. Should I remind you?”. Continue from the answers on the next turn. (4) Interpret relative dates using the supplied local date. For a weekday without a date, use its next upcoming occurrence; when a date is uncertain, ask instead of guessing. (5) Set priority to high or urgent only when the user says it is important, urgent, critical, or time-sensitive. Otherwise use normal. (6) Prefer an existing folder whose name and contents best match the task. Use Personal only when no folder is a reasonable fit. Create a new folder only when the user asks or several items clearly need one. (7) Respect explicit task ordering and saved preferences. Reorder tasks only when asked; use only supplied task IDs. (8) Match the user’s language and dialect, including Arabic. Be concise and natural; never expose internal planning, JSON, or filler. Confirm only actions that were actually applied, and mention a reminder only when the saved task has a real reminder date/time. Current local date: '+toISO(today())+'. Local user memory and current app state: '+JSON.stringify(snapshot)+'. Recent conversation: '+JSON.stringify(recent)+'.';
   const responseStyle=' The reply field is plain, natural text for the user: never put JSON, field names, braces, code fences, or ISO-formatted dates in it. Use the user’s language and dialect, and use a human-readable date. Keep confirmations to one short sentence and describe only actions that were actually requested.';
   if(mode==='voice')return base+responseStyle+' Extract the spoken request. Return only JSON: {"title":"string or null","category":"existing folder or new folder name","createFolder":false,"icon":"emoji or folder emoji","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"description":"string","question":"short essential follow-up or empty"}. Do not invent dates. If no deadline was requested, leave dueDate null and set noReminder true.';
-  return base+responseStyle+' Handle the user’s request against the supplied tasks. Return only JSON: {"reply":"short answer or clarification questions","actions":{"add":[{"title":"...","category":"folder name","createFolder":false,"icon":"📁","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"priority":"normal|high|urgent","description":"optional"}],"update":[{"id":"existing task id","title":"new title or null","description":"new details or null","dueDate":"YYYY-MM-DD or null","reminderDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":false,"priority":"normal|high|urgent or null","category":"folder name or null","createFolder":false,"icon":"📁"}],"rename":[{"id":"existing task id","title":"new task title"}],"complete":["existing task id"],"delete":["existing task id"],"move":[{"id":"existing task id","category":"folder name","createFolder":false,"icon":"📁"}],"createFolders":[{"name":"...","icon":"📁"}],"remember":["durable preference explicitly stated or corrected by user"],"order":["task ids in the requested order"]}}. For clarification questions, return an empty actions object. Only make actions that the user clearly asked for. Use only IDs present in the supplied state.';
+  return base+responseStyle+' Handle the user’s request against the supplied tasks. Return only JSON: {"reply":"short answer or clarification questions","questions":[{"id":"when","text":"When should I remind you?","options":["Today","Tomorrow","This weekend"],"allowSkip":true}],"actions":{"add":[{"title":"...","category":"folder name","createFolder":false,"icon":"📁","dueDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":true,"priority":"normal|high|urgent","description":"optional"}],"update":[{"id":"existing task id","title":"new title or null","description":"new details or null","dueDate":"YYYY-MM-DD or null","reminderDate":"YYYY-MM-DD or null","reminderTime":"HH:MM or null","noReminder":false,"priority":"normal|high|urgent or null","category":"folder name or null","createFolder":false,"icon":"📁"}],"rename":[{"id":"existing task id","title":"new task title"}],"complete":["existing task id"],"delete":["existing task id"],"move":[{"id":"existing task id","category":"folder name","createFolder":false,"icon":"📁"}],"createFolders":[{"name":"...","icon":"📁"}],"remember":["durable preference explicitly stated or corrected by user"],"order":["task ids in the requested order"]}}. If the user casually mentions an activity such as going to play or watch something, reply naturally and offer up to three useful QCM questions (when, where, reminder/importance) without creating a task until the user answers or explicitly asks to save it. For clarification questions, return an empty actions object. Only make actions that the user clearly asked for. Use only IDs present in the supplied state.';
 }
 async function callDeepSeek(messages){
   const dsToken=localStorage.getItem('sm_ds_token')||'';
@@ -1247,6 +1260,7 @@ function openDecision(html){ decisionBody.innerHTML=html; decisionSheet.classLis
 function closeSheets(){
   decisionSheet.classList.remove('open'); settingsSheet.classList.remove('open'); editSheet.classList.remove('open');
   if(newDirSheet) newDirSheet.classList.remove('open');
+  if(typeof agentQuestionSheet!=='undefined') agentQuestionSheet.classList.remove('open');
   backdrop.classList.remove('show'); sheetCtx=null;
 }
 backdrop.addEventListener('click',()=>{ if(sheetCtx&&sheetCtx.type!=='receipt'){ toast('Not saved'); } closeSheets(); });
@@ -2002,7 +2016,26 @@ async function pullNotified(){
 }
 
 /* ============ AI CHAT — SHARED ============ */
-const chatLog=$('chatLog'), chatInput=$('chatInput');
+const chatLog=$('chatLog'), chatInput=$('chatInput'), agentQuestionSheet=$('agentQuestionSheet'), agentQuestionBody=$('agentQuestionBody');
+let activeAgentQuestions=[];
+function showAgentQuestions(questions){
+  if(!Array.isArray(questions)||!questions.length)return;
+  activeAgentQuestions=questions.slice(0,3).map((q,i)=>({id:String(q.id||'q'+i),text:String(q.text||q.question||'').trim(),options:Array.isArray(q.options)?q.options.slice(0,6).map(String):[]})).filter(q=>q.text&&q.options.length);
+  if(!activeAgentQuestions.length)return;
+  agentQuestionBody.innerHTML=activeAgentQuestions.map(q=>'<div class="agent-q-block" data-q="'+esc(q.id)+'"><div class="agent-q-label">'+esc(q.text)+'</div><div class="agent-q-options">'+q.options.map((o,i)=>'<button type="button" class="agent-q-option" data-value="'+esc(o)+'">'+esc(o)+'</button>').join('')+'</div></div>').join('');
+  agentQuestionSheet.classList.add('open');backdrop.classList.add('show');
+}
+function closeAgentQuestions(){agentQuestionSheet.classList.remove('open');if(!decisionSheet.classList.contains('open')&&!settingsSheet.classList.contains('open')&&!editSheet.classList.contains('open')&&!newDirSheet.classList.contains('open'))backdrop.classList.remove('show');activeAgentQuestions=[];}
+agentQuestionBody.addEventListener('click',e=>{const b=e.target.closest('.agent-q-option');if(!b)return;b.parentElement.querySelectorAll('.agent-q-option').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');});
+function submitAgentQuestions(skip){
+  const answers=skip?[]:activeAgentQuestions.map(q=>{const block=agentQuestionBody.querySelector('[data-q="'+CSS.escape(q.id)+'"]');const selected=block&&block.querySelector('.agent-q-option.sel');return selected?{question:q.text,answer:selected.dataset.value}:null;}).filter(Boolean);
+  closeAgentQuestions();
+  if(skip){chatMsg('user','Skip the extra questions. Keep it open for now.');return;}
+  if(!answers.length)return;
+  sendChatMessage('My answers: '+answers.map(a=>a.question+' — '+a.answer).join('; '));
+}
+$('agentQuestionSkip').addEventListener('click',()=>submitAgentQuestions(true));
+$('agentQuestionSend').addEventListener('click',()=>submitAgentQuestions(false));
 function chatMsg(role,text){
   chatHistory.push({role,text}); saveChat(); renderChat();
   return text;
@@ -2312,11 +2345,11 @@ async function sendChatMessage(voiceText){
       for(const item of chatHistory.slice(-12))messages.push({role:item.role==='user'?'user':'assistant',content:item.text});
       const raw=await callDeepSeek(messages);
       const parsed=parseAiJson(raw);
-      result=parsed?{reply:String(parsed.reply||''),actions:parsed.actions||{}}:{reply:safeAiFallback(raw,text),actions:{}};
+      result=parsed?{reply:String(parsed.reply||''),actions:parsed.actions||{},questions:Array.isArray(parsed.questions)?parsed.questions:[]}:{reply:safeAiFallback(raw,text),actions:{},questions:[]};
       applyAiActions(result.actions);
     }else result={reply:localAgent(text),actions:{}};
     const reply=String(result.reply||'تم.');
-    const el=$(loadId);if(el)el.remove();chatMsg('ai',reply);
+    const el=$(loadId);if(el)el.remove();chatMsg('ai',reply);showAgentQuestions(result.questions);
   }catch(error){
     const el=$(loadId);if(el)el.remove();
     chatMsg('ai','تعذّر الاتصال بـ DeepSeek: '+String(error.message||error));
